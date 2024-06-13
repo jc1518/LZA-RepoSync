@@ -1,0 +1,8 @@
+### VisualStudioCode ###
+.vscode/*
+
+### macOS ###
+.DS_Store
+
+### Sandbox ###
+sandbox*.env

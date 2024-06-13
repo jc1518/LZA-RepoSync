@@ -1,0 +1,595 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: External Repository Configurations
+        Parameters:
+          - ExternalRepositoryOwner
+          - ExternalRepository
+          - ExternalBranch
+          - CodeConnection
+      - Label:
+          default: Codecommit Repository Configurations
+        Parameters:
+          - CodecommitRepository
+          - CodecommitBranch
+      - Label:
+          default: Git Configurations
+        Parameters:
+          - ForceGitPush
+    ParameterLabels:
+      ExternalRepositoryOwner:
+        default: External Repository Owner
+      ExternalRepository:
+        default: External Repository Name
+      ExternalBranch:
+        default: External Repository Branch Name
+      CodeConnection:
+        default: Code Connection for the external repository hosting platform
+      CodecommitRepository:
+        default: Codecommit Repository Name
+      CodecommitBranch:
+        default: Codecommit Repository Branch Name
+      ForceGitPush:
+        default: Force Git Push (yes/no)
+Parameters:
+  ExternalRepositoryOwner:
+    Type: String
+    Description: External repository owner
+  ExternalRepository:
+    Type: String
+    Description: External repository name
+  ExternalBranch:
+    Type: String
+    Description: External repository branch name
+  CodeConnection:
+    Type: String
+    Description: Code Connection for the external repository hosting platform
+  CodecommitRepository:
+    Type: String
+    Description: Codecommit repository name
+  CodecommitBranch:
+    Type: String
+    Description: Codecommit repository branch name
+  ForceGitPush:
+    Type: String
+    Default: "yes"
+    AllowedValues:
+      - "yes"
+      - "no"
+    Description: Force Git push
+Resources:
+  CodebuildRole700594C4:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+        Version: "2012-10-17"
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action: codecommit:GitPush
+                Effect: Allow
+                Resource:
+                  Fn::Join:
+                    - ""
+                    - - "arn:aws:codecommit:"
+                      - Ref: AWS::Region
+                      - ":"
+                      - Ref: AWS::AccountId
+                      - ":"
+                      - Ref: CodecommitRepository
+            Version: "2012-10-17"
+          PolicyName: codebuildRolePolicy
+  CodebuildRoleDefaultPolicy98E55375:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Effect: Allow
+            Resource:
+              - Fn::Join:
+                  - ""
+                  - - "arn:aws:logs:"
+                    - Ref: AWS::Region
+                    - ":"
+                    - Ref: AWS::AccountId
+                    - :log-group:/aws/codebuild/
+                    - Ref: CodebuildProject3FD70A69
+                    - :*
+              - Fn::Join:
+                  - ""
+                  - - "arn:aws:logs:"
+                    - Ref: AWS::Region
+                    - ":"
+                    - Ref: AWS::AccountId
+                    - :log-group:/aws/codebuild/
+                    - Ref: CodebuildProject3FD70A69
+          - Action:
+              - codebuild:BatchPutCodeCoverages
+              - codebuild:BatchPutTestCases
+              - codebuild:CreateReport
+              - codebuild:CreateReportGroup
+              - codebuild:UpdateReport
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - "arn:aws:codebuild:"
+                  - Ref: AWS::Region
+                  - ":"
+                  - Ref: AWS::AccountId
+                  - :report-group/
+                  - Ref: CodebuildProject3FD70A69
+                  - -*
+          - Action:
+              - s3:GetBucket*
+              - s3:GetObject*
+              - s3:List*
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - PipelineArtifactsBucket22248F97
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - PipelineArtifactsBucket22248F97
+                        - Arn
+                    - /*
+          - Action:
+              - kms:Decrypt
+              - kms:DescribeKey
+              - kms:Encrypt
+              - kms:GenerateDataKey*
+              - kms:ReEncrypt*
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - PipelineArtifactsBucketEncryptionKey01D58D69
+                - Arn
+          - Action: codestar-connections:UseConnection
+            Effect: Allow
+            Resource:
+              Ref: CodeConnection
+        Version: "2012-10-17"
+      PolicyName: CodebuildRoleDefaultPolicy98E55375
+      Roles:
+        - Ref: CodebuildRole700594C4
+  CodebuildProject3FD70A69:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables:
+          - Name: EXTERNAL_REPOSITORY_OWNER
+            Type: PLAINTEXT
+            Value:
+              Ref: ExternalRepositoryOwner
+          - Name: EXTERNAL_REPOSITORY
+            Type: PLAINTEXT
+            Value:
+              Ref: ExternalRepository
+          - Name: EXTERNAL_BRANCH
+            Type: PLAINTEXT
+            Value:
+              Ref: ExternalBranch
+          - Name: CODE_CONNECTION
+            Type: PLAINTEXT
+            Value:
+              Ref: CodeConnection
+          - Name: CODECOMMIT_REPOSITORY
+            Type: PLAINTEXT
+            Value:
+              Ref: CodecommitRepository
+          - Name: CODECOMMIT_BRANCH
+            Type: PLAINTEXT
+            Value:
+              Ref: CodecommitBranch
+          - Name: FORCE_GIT_PUSH
+            Type: PLAINTEXT
+            Value:
+              Ref: ForceGitPush
+        Image: aws/codebuild/standard:7.0
+        ImagePullCredentialsType: CODEBUILD
+        PrivilegedMode: false
+        Type: LINUX_CONTAINER
+      ServiceRole:
+        Fn::GetAtt:
+          - CodebuildRole700594C4
+          - Arn
+      Source:
+        BuildSpec: |
+          version: "0.2"
+          phases:
+            install:
+              commands:
+                - pip install git-remote-codecommit
+            build:
+              commands:
+                - echo "Source - External repository:${EXTERNAL_REPOSITORY_OWNER}/${EXTERNAL_REPOSITORY}, branch:${EXTERNAL_BRANCH}"
+                - echo "Destination - Codecommit repository:${CODECOMMIT_REPOSITORY}, branch:${CODECOMMIT_BRANCH}"
+                - cd ${CODEBUILD_SRC_DIR}
+                - git checkout ${EXTERNAL_BRANCH}
+                - git remote add codecommit codecommit::${AWS_DEFAULT_REGION}://${CODECOMMIT_REPOSITORY}
+                - FORCE=''; if [ ${FORCE_GIT_PUSH} = yes ]; then FORCE='-f'; echo 'Use Git force push'; fi
+                - git push --set-upstream codecommit ${EXTERNAL_BRANCH}:${CODECOMMIT_BRANCH} ${FORCE}
+        Type: CODEPIPELINE
+      Cache:
+        Type: NO_CACHE
+      EncryptionKey:
+        Fn::GetAtt:
+          - PipelineArtifactsBucketEncryptionKey01D58D69
+          - Arn
+  PipelineRoleDCFDBB91:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+        Version: "2012-10-17"
+  PipelineRoleDefaultPolicy77A82A74:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - s3:Abort*
+              - s3:DeleteObject*
+              - s3:GetBucket*
+              - s3:GetObject*
+              - s3:List*
+              - s3:PutObject
+              - s3:PutObjectLegalHold
+              - s3:PutObjectRetention
+              - s3:PutObjectTagging
+              - s3:PutObjectVersionTagging
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - PipelineArtifactsBucket22248F97
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - PipelineArtifactsBucket22248F97
+                        - Arn
+                    - /*
+          - Action:
+              - kms:Decrypt
+              - kms:DescribeKey
+              - kms:Encrypt
+              - kms:GenerateDataKey*
+              - kms:ReEncrypt*
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - PipelineArtifactsBucketEncryptionKey01D58D69
+                - Arn
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - PipelineGetSourceExternalSourceCodePipelineActionRoleC817250F
+                  - Arn
+              - Fn::GetAtt:
+                  - PipelineRoleDCFDBB91
+                  - Arn
+          - Action:
+              - codebuild:BatchGetBuilds
+              - codebuild:StartBuild
+              - codebuild:StopBuild
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - CodebuildProject3FD70A69
+                - Arn
+        Version: "2012-10-17"
+      PolicyName: PipelineRoleDefaultPolicy77A82A74
+      Roles:
+        - Ref: PipelineRoleDCFDBB91
+  PipelineArtifactsBucketEncryptionKey01D58D69:
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Statement:
+          - Action: kms:*
+            Effect: Allow
+            Principal:
+              AWS:
+                Fn::Join:
+                  - ""
+                  - - "arn:aws:iam::"
+                    - Ref: AWS::AccountId
+                    - :root
+            Resource: "*"
+        Version: "2012-10-17"
+      EnableKeyRotation: true
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+  PipelineArtifactsBucketEncryptionKeyAlias5C510EEE:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${AWS::StackName}
+      TargetKeyId:
+        Fn::GetAtt:
+          - PipelineArtifactsBucketEncryptionKey01D58D69
+          - Arn
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+  PipelineArtifactsBucket22248F97:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              KMSMasterKeyID:
+                Fn::GetAtt:
+                  - PipelineArtifactsBucketEncryptionKey01D58D69
+                  - Arn
+              SSEAlgorithm: aws:kms
+      LoggingConfiguration:
+        LogFilePrefix: access-log/
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
+  PipelineArtifactsBucketPolicyD4F9712A:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: PipelineArtifactsBucket22248F97
+      PolicyDocument:
+        Statement:
+          - Action: s3:*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+            Effect: Deny
+            Principal:
+              AWS: "*"
+            Resource:
+              - Fn::GetAtt:
+                  - PipelineArtifactsBucket22248F97
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - PipelineArtifactsBucket22248F97
+                        - Arn
+                    - /*
+        Version: "2012-10-17"
+  S3Deletion:
+    Type: Custom::S3Deletion
+    Properties:
+      ServiceToken: !GetAtt S3DeletionLambdaFunction.Arn
+      the_bucket: !Ref PipelineArtifactsBucket22248F97
+  S3DeletionLambdaFunction:
+    Type: "AWS::Lambda::Function"
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: Lambda functions should be deployed inside a VPC
+          - id: W92
+            reason: Lambda functions should define ReservedConcurrentExecutions to reserve simultaneous executions
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-${AWS::Region}-S3-deletion"
+      Handler: index.handler
+      Role: !GetAtt AWSLambdaExecutionRole.Arn
+      Timeout: 360
+      Runtime: python3.11
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          def handler(event, context):
+              the_event = event['RequestType']
+              print("The event is: ", str(the_event))
+              response_data = {}
+              the_bucket = event['ResourceProperties']['the_bucket']
+              try:
+                  if the_event == 'Delete':
+                      print("Deleting S3 content...")
+                      b_operator = boto3.resource('s3')
+                      b_operator.Bucket(str(the_bucket)).objects.all().delete()
+                  print("Operation successful!")
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
+              except Exception as e:
+                  print("Operation failed...")
+                  print(str(e))
+                  response_data['Data'] = str(e)
+                  cfnresponse.send(event, context, cfnresponse.FAILED, response_data)
+  AWSLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+        Version: "2012-10-17"
+      Path: "/"
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource: arn:aws:logs:*:*:*
+            Version: "2012-10-17"
+          PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-S3-deletion-cw-policy
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:List*
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:s3:::${PipelineArtifactsBucket22248F97}/*
+                  - !Sub arn:aws:s3:::${PipelineArtifactsBucket22248F97}
+            Version: "2012-10-17"
+          PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-S3-deletion-lambda-policy
+  PipelineC660917D:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn:
+        Fn::GetAtt:
+          - PipelineRoleDCFDBB91
+          - Arn
+      Stages:
+        - Actions:
+            - ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: "1"
+              Configuration:
+                ConnectionArn:
+                  Ref: CodeConnection
+                FullRepositoryId:
+                  Fn::Join:
+                    - ""
+                    - - Ref: ExternalRepositoryOwner
+                      - /
+                      - Ref: ExternalRepository
+                BranchName:
+                  Ref: ExternalBranch
+                OutputArtifactFormat: CODEBUILD_CLONE_REF
+              Name: External_Source
+              OutputArtifacts:
+                - Name: Source
+              RoleArn:
+                Fn::GetAtt:
+                  - PipelineGetSourceExternalSourceCodePipelineActionRoleC817250F
+                  - Arn
+              RunOrder: 1
+          Name: Get_Source
+        - Actions:
+            - ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName:
+                  Ref: CodebuildProject3FD70A69
+              InputArtifacts:
+                - Name: Source
+              Name: External-to-Codecommit-Synchronization
+              RoleArn:
+                Fn::GetAtt:
+                  - PipelineRoleDCFDBB91
+                  - Arn
+              RunOrder: 1
+          Name: To_Destination
+      ArtifactStore:
+        EncryptionKey:
+          Id:
+            Fn::GetAtt:
+              - PipelineArtifactsBucketEncryptionKey01D58D69
+              - Arn
+          Type: KMS
+        Location:
+          Ref: PipelineArtifactsBucket22248F97
+        Type: S3
+      RestartExecutionOnUpdate: true
+    DependsOn:
+      - PipelineRoleDefaultPolicy77A82A74
+      - PipelineRoleDCFDBB91
+  PipelineGetSourceExternalSourceCodePipelineActionRoleC817250F:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              AWS:
+                Fn::Join:
+                  - ""
+                  - - "arn:aws:iam::"
+                    - Ref: AWS::AccountId
+                    - :root
+        Version: "2012-10-17"
+  PipelineGetSourceExternalSourceCodePipelineActionRoleDefaultPolicy3C12A20C:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: codestar-connections:UseConnection
+            Effect: Allow
+            Resource:
+              Ref: CodeConnection
+          - Action:
+              - s3:Abort*
+              - s3:DeleteObject*
+              - s3:GetBucket*
+              - s3:GetObject*
+              - s3:List*
+              - s3:PutObject
+              - s3:PutObjectLegalHold
+              - s3:PutObjectRetention
+              - s3:PutObjectTagging
+              - s3:PutObjectVersionTagging
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - PipelineArtifactsBucket22248F97
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - PipelineArtifactsBucket22248F97
+                        - Arn
+                    - /*
+          - Action:
+              - kms:Decrypt
+              - kms:DescribeKey
+              - kms:Encrypt
+              - kms:GenerateDataKey*
+              - kms:ReEncrypt*
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - PipelineArtifactsBucketEncryptionKey01D58D69
+                - Arn
+          - Action:
+              - s3:PutObjectAcl
+              - s3:PutObjectVersionAcl
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - Fn::GetAtt:
+                      - PipelineArtifactsBucket22248F97
+                      - Arn
+                  - /*
+        Version: "2012-10-17"
+      PolicyName: PipelineGetSourceExternalSourceCodePipelineActionRoleDefaultPolicy3C12A20C
+      Roles:
+        - Ref: PipelineGetSourceExternalSourceCodePipelineActionRoleC817250F
